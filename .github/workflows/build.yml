@@ -21,32 +21,66 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-          cache: maven
+
+      - name: Check source ZIP
+        run: |
+          if [ ! -f "LimboHardcore-Source.zip" ]; then
+            echo "ERROR: LimboHardcore-Source.zip tidak ditemukan."
+            ls -la
+            exit 1
+          fi
 
       - name: Extract source ZIP
         run: |
+          mkdir -p source
           unzip -o LimboHardcore-Source.zip -d source
-          find source -name pom.xml
+          echo "Daftar file pom.xml:"
+          find source -type f -name pom.xml
 
       - name: Locate Maven project
         id: project
         run: |
-          POM=$(find source -name pom.xml -print -quit)
+          POM=$(find source -type f -name pom.xml -print -quit)
+
           if [ -z "$POM" ]; then
-            echo "ERROR: pom.xml tidak ditemukan dalam ZIP."
+            echo "ERROR: pom.xml tidak ditemukan di dalam ZIP."
+            echo "Daftar file hasil ekstraksi:"
+            find source -maxdepth 4 -type f
             exit 1
           fi
-          echo "dir=$(dirname "$POM")" >> "$GITHUB_OUTPUT"
+
+          PROJECT_DIR=$(dirname "$POM")
+          echo "dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
+          echo "Proyek ditemukan di: $PROJECT_DIR"
 
       - name: Build plugin
-        working-directory: .
-        run: mvn -B -f "${{ steps.project.outputs.dir }}/pom.xml" clean package
+        run: |
+          mvn --batch-mode \
+            -f "${{ steps.project.outputs.dir }}/pom.xml" \
+            clean package
+
+      - name: Find JAR
+        id: jar
+        run: |
+          JAR=$(find "${{ steps.project.outputs.dir }}/target" \
+            -maxdepth 1 -type f -name '*.jar' \
+            ! -name '*-sources.jar' \
+            ! -name '*-javadoc.jar' \
+            -print -quit)
+
+          if [ -z "$JAR" ]; then
+            echo "ERROR: File JAR tidak berhasil dibuat."
+            exit 1
+          fi
+
+          echo "path=$JAR" >> "$GITHUB_OUTPUT"
+          echo "JAR berhasil dibuat: $JAR"
 
       - name: Upload plugin JAR
         uses: actions/upload-artifact@v4
         with:
           name: LimboHardcore-JAR
-          path: ${{ steps.project.outputs.dir }}/target/*.jar
+          path: ${{ steps.jar.outputs.path }}
           if-no-files-found: error
           retention-days: 14
           
